@@ -22,8 +22,10 @@ import joblib
 from time import strftime
 from urllib.request import Request, urlopen
 from gzip import GzipFile
+import gzip
 import numpy as np
 import scipy.stats
+import bz2
 
 if sys.version_info[0] < 3:
     from string import maketrans
@@ -302,7 +304,7 @@ def read_profile(ref_g, number_list, model_prefix, per, mode, strandness, ref_t=
                     for line in f:
                         line = str(line, 'utf-8').strip()
                         if line[0] == '>':
-                            info = re.split(r'[_\s]\s*', line)
+                            info = re.split(r'[.\_\s]\s*', line)
                             chr_name = "-".join(info[1:])
                             seq_dict[species][chr_name.split(".")[0]] = ''
                             seq_len[species][chr_name.split(".")[0]] = 0
@@ -313,9 +315,10 @@ def read_profile(ref_g, number_list, model_prefix, per, mode, strandness, ref_t=
                             if seq_len[species][chr_name.split(".")[0]] > max_chrom[species]:
                                 max_chrom[species] = seq_len[species][chr_name.split(".")[0]]
             else:
-                with open(fq_path, 'r') as infile:
+                # with open(fq_path, 'r') as infile:
+                with bz2.open(fq_path, 'rt') as infile:
                     for seqN, seqS, seqQ in readfq(infile):
-                        info = re.split(r'[_\s]\s*', seqN)
+                        info = re.split(r'[.\_\s]\s*', seqN)
                         chr_name = "-".join(info)
                         seq_dict[species][chr_name.split(".")[0]] = seqS
                         seq_len[species][chr_name.split(".")[0]] = len(seqS)
@@ -328,7 +331,7 @@ def read_profile(ref_g, number_list, model_prefix, per, mode, strandness, ref_t=
                 for line in dna_type_list.readlines():
                     fields = line.split("\t")
                     species = '_'.join(fields[0].split())
-                    chr = re.split(r'[_\s]\s*', fields[1].partition(" ")[0])
+                    chr = re.split(r'[.\_\s]\s*', fields[1].partition(" ")[0])
                     chr_name = "-".join(chr)
                     type = fields[2].strip("\n")
 
@@ -338,9 +341,10 @@ def read_profile(ref_g, number_list, model_prefix, per, mode, strandness, ref_t=
                     dict_dna_type[species][chr_name.split(".")[0]] = type
     else:
         max_chrom = 0
-        with open(ref, 'r') as infile:
+        # with open(ref, 'r') as infile:
+        with bz2.open(ref, 'rt') as infile:
             for seqN, seqS, seqQ in readfq(infile):
-                info = re.split(r'[_\s]\s*', seqN)
+                info = re.split(r'[.\_\s]\s*', seqN)
                 chr_name = "-".join(info)
                 seq_dict[chr_name.split(".")[0]] = seqS
                 seq_len[chr_name.split(".")[0]] = len(seqS)
@@ -544,7 +548,8 @@ def read_profile(ref_g, number_list, model_prefix, per, mode, strandness, ref_t=
         with open(model_prefix + "_chimeric_info") as chimeric_info:
             segment_mean = float(chimeric_info.readline().split('\t')[1])
             if mode == "metagenome":
-                abun_inflation = float(chimeric_info.readline().split('\t')[1])
+                # abun_inflation = float(chimeric_info.readline().split('\t')[1])
+                abun_inflation = segment_mean
         kde_gap = joblib.load(model_prefix + "_gap_length.pkl")
 
 
@@ -1507,9 +1512,9 @@ def simulation(mode, out, dna_type, per, kmer_bias, basecaller, read_type, max_l
     sys.stdout.write(strftime("%Y-%m-%d %H:%M:%S") + ": Start simulation of aligned reads\n")
     sys.stdout.flush()
     if fastq:
-        ext = ".fastq"
+        ext = ".fastq.gz"
     else:
-        ext = ".fasta"
+        ext = ".fasta.gz"
 
     procs = []
     aligned_subfiles = []
@@ -1552,13 +1557,14 @@ def simulation(mode, out, dna_type, per, kmer_bias, basecaller, read_type, max_l
 
     sys.stdout.write('\n')  # Start a new line because the "Number of reads simulated" is not returned
     # Merging aligned reads subfiles and error subfiles
-    with open(out + "_aligned_reads" + ext, 'w') as out_aligned_reads:
-        for fname in aligned_subfiles:
-            with open(fname) as infile:
-                out_aligned_reads.write(infile.read())
-    for fname in aligned_subfiles:
-        os.remove(fname)
+    # with gzip.open(out + "_aligned_reads" + ext, 'wt') as out_aligned_reads:
+    #     for fname in aligned_subfiles:
+    #         with open(fname) as infile:
+    #             out_aligned_reads.write(infile.read())
+    # for fname in aligned_subfiles:
+    #     os.remove(fname)
 
+    # Merging error subfiles
     with open(out + "_aligned_error_profile", 'w') as out_error:
         out_error.write("Seq_name\tSeq_pos\terror_type\terror_length\tref_base\tseq_base\n")
         for fname in error_subfiles:
@@ -1593,12 +1599,34 @@ def simulation(mode, out, dna_type, per, kmer_bias, basecaller, read_type, max_l
             p.join()
 
         sys.stdout.write('\n')  # Start a new line because the "Number of reads simulated" is not returned
-        # Merging unaligned reads subfiles and error subfiles
-        with open(out + "_unaligned_reads" + ext, 'w') as out_unaligned_reads:
+        # Merging aligned and unaligned reads subfiles
+        with gzip.open(out + "__synth" + ext, 'wt') as out_all_reads:
+            for fname in aligned_subfiles:
+                with open(fname) as infile:
+                    out_all_reads.write(infile.read())
             for fname in unaligned_subfiles:
                 with open(fname) as infile:
-                    out_unaligned_reads.write(infile.read())
+                    out_all_reads.write(infile.read())
+        for fname in aligned_subfiles:
+            os.remove(fname)
         for fname in unaligned_subfiles:
+            os.remove(fname)
+
+        # Merging unaligned reads subfiles
+        # with open(out + "_unaligned_reads" + ext, 'w') as out_unaligned_reads:
+        #     for fname in unaligned_subfiles:
+        #         with open(fname) as infile:
+        #             out_unaligned_reads.write(infile.read())
+        # for fname in unaligned_subfiles:
+        #     os.remove(fname)
+
+    else:
+    # Merging aligned reads subfiles 
+        with gzip.open(out + "_aligned_reads" + ext, 'wt') as out_aligned_reads:
+            for fname in aligned_subfiles:
+                with open(fname) as infile:
+                    out_aligned_reads.write(infile.read())
+        for fname in aligned_subfiles:
             os.remove(fname)
 
 

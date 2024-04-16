@@ -1,3 +1,7 @@
+# extracted models
+pre-trained_models/human_giab_hg002_sub1M_kitv14_dorado
+pre-trained_models/human_NA12878_DNA_FAB49712_guppy
+
 # Compiled intermediate files
 *.pyc
 
