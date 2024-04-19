@@ -737,19 +737,27 @@ def assign_species(length_list, seg_list, current_species_base_dict):
     for species, abun in dict_abun.items():
         base_quota[species] = total_bases * abun / total_abun - current_species_base_dict[species]
 
+    for k,v in base_quota.items():
+        print("Assigned {} bases to species {}".format(v, k))
+        print("Formula: {} * {} / {} - {}".format(total_bases, dict_abun[k], total_abun, current_species_base_dict[k]))
+
     length_list_pointer = 0
     pre_species = ''
     num_reads = len(length_list_sorted)
+    print("\nAssigning reads: ")
+    print("Num reads: ", num_reads)
     for seg in seg_list_sorted:
         if length_list_pointer + seg > num_reads:
             break
         for each_seg in range(seg):
+            print("Seg: ", each_seg)
             if each_seg == 0:
                 available_species = [s for s, q in base_quota.items()
                                      if q - length_list_sorted[length_list_pointer] > 0]
                 if len(available_species) == 0:
                     available_species = [s for s, q in base_quota.items() if q > 0]
                 species = random.choice(available_species)
+                print("Choosing among {} available species".format(len(available_species)))
             else:
                 available_species = [s for s, q in base_quota.items()
                                      if q - length_list_sorted[length_list_pointer] > 0 and s != pre_species]
@@ -758,13 +766,16 @@ def assign_species(length_list, seg_list, current_species_base_dict):
                     species = pre_species
                 elif p > dict_abun_inflated[pre_species] and len(available_species) > 0:
                     species = random.choice(available_species)
+                    print("Choosing among {} available species".format(len(available_species)))
                 else:
                     available_species = [s for s, q in base_quota.items()
                                          if q - length_list_sorted[length_list_pointer] > 0]
                     if len(available_species) == 0:
                         available_species = [s for s, q in base_quota.items() if q > 0]
                     species = random.choice(available_species)
+                    print("Choosing among {} available species".format(len(available_species)))
 
+            print("Assigned {} nts to species {}".format(length_list_sorted[length_list_pointer], species))
             species_list[length_list_pointer] = species
             base_quota[species] -= length_list_sorted[length_list_pointer]
             length_list_pointer += 1
@@ -783,15 +794,18 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
     id_begin = '@' if fastq else '>'
 
     remaining_reads = num_simulate
+    # print("Remaining reads: ", remaining_reads)
     if chimeric:
         num_segment = np.random.geometric(1 / segment_mean, num_simulate)
     else:
         num_segment = np.ones(num_simulate, dtype=int)
     remaining_segments = num_segment
+    print("Remaining segments: ", remaining_segments)
     remaining_gaps = remaining_segments - 1
     passed = 0
     current_species_bases = {species: 0 for species in dict_abun.keys()}
     while remaining_reads > 0:
+        print("Remaining reads: ", remaining_reads)
         if per:
             ref_lengths = get_length_kde(kde_aligned, sum(remaining_segments)) if median_l is None else \
                 np.random.lognormal(np.log(median_l), sd_l, remaining_segments)
@@ -810,6 +824,7 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
                 num_current_loop = min(remaining_reads, len(remainder_lengths), len(head_vs_ht_ratio_list))
                 ref_lengths = total_lengths[:num_current_loop] - remainder_lengths[:num_current_loop]
             ref_lengths = [x for x in ref_lengths if 0 < x <= max_l]
+            # print("Ref lengths length {}: ".format(len(ref_lengths)), ref_lengths)
             if len(ref_lengths) == 0:
                 continue
 
@@ -826,7 +841,9 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
         gap_pointer = 0
         species_pointer = 0
         for each_read in xrange(len(remaining_segments)):
+            print("Creating read: ", each_read)
             segments = remaining_segments[each_read]
+            print("Remaining segments: ", segments)
             # In case too many ref length was filtered previously
             if (not per and each_read >= min(len(head_vs_ht_ratio_list), len(remainder_lengths))) or \
                 seg_pointer + segments > len(ref_lengths):
@@ -926,6 +943,7 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
                 new_seg_list = [None] * num_seg
                 read_name_components = list()
                 for seg_idx in range(num_seg):
+                    print("Extracting segment: ", seg_idx)
                     new_seg_list[seg_idx], new_seg_name = extract_read("metagenome", seg_length_list[seg_idx], species_list[seg_idx])
                     read_name_components.append(new_seg_name)
                     if seg_idx < len(gap_list):
@@ -1665,8 +1683,9 @@ def extract_read(dna_type, length, s=None):
         
         key = random.choice(list(seq_len[s].keys()))
         key_seq_len = seq_len[s][key]
-        
+
         if length > key_seq_len:
+            print("Discarded {} because too short".format(key))
             # the chromosome selected is too short
             
             # find all chromosomes that are longer
@@ -1676,12 +1695,20 @@ def extract_read(dna_type, length, s=None):
                 for tmp_key in tmp_dict:
                     if length < tmp_dict[tmp_key]:
                         longer_chroms.append((tmp_s, tmp_key))
+
+            # print("Choosing among {} longer chromosomes: ".format(len(longer_chroms)), longer_chroms)
             
             assert len(longer_chroms) > 0 # otherwise there is a problem
             
             # select a random chromosome from this list
             s, key = random.choice(longer_chroms)
             key_seq_len = seq_len[s][key]
+            
+            if s == "5997":
+                print("Longer contigs from 5997: ", [x[1] for x in longer_chroms if x[0] == "5997"])
+
+        
+        print("Specie: {}, contig: {}, length: {}".format(s, key, key_seq_len))
         
         if dict_dna_type[s][key] == "circular":
             ref_pos = random.randint(0, key_seq_len)
@@ -2448,8 +2475,11 @@ def main():
                 sys.stdout.flush()
 
             number_aligned = number_aligned_l[s]
+            print("number_aligned: ", number_aligned)
             number_unaligned = number_unaligned_l[s]
+            print("number_unaligned: ", number_unaligned)
             max_len = min(max_len, max(max_chrom.values()))
+            print("max readlen: ", max_len)
             simulation(args.mode, out + "_" + sample, "metagenome", perfect, kmer_bias, basecaller, "DNA", max_len,
                        min_len, num_threads, fastq, median_len, sd_len, chimeric=chimeric)
 
