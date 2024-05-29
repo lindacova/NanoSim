@@ -820,7 +820,8 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
             if median_l is None:
                 ref_lengths = get_length_kde(kde_aligned, sum(remaining_segments))
             else:
-                total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, remaining_reads)
+                total_lengths = np.random.logseries(0.9, remaining_reads)*(median_l/2)
+                # total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, remaining_reads)
                 num_current_loop = min(remaining_reads, len(remainder_lengths), len(head_vs_ht_ratio_list))
                 ref_lengths = total_lengths[:num_current_loop] - remainder_lengths[:num_current_loop]
             ref_lengths = [x for x in ref_lengths if 0 < x <= max_l]
@@ -1445,8 +1446,12 @@ def simulation_unaligned(dna_type, min_l, max_l, median_l, sd_l, out_reads, base
     passed = 0
     while remaining_reads > 0:
         # if the median length and sd is set, use log normal distribution for simulation
-        ref_l = get_length_kde(kde_unaligned, remaining_reads) if median_l is None else \
-            np.random.lognormal(np.log(median_l), sd_l, remaining_reads)
+        if dna_type == "metagenome":
+            ref_l = get_length_kde(kde_unaligned, remaining_reads) if median_l is None else \
+                np.random.logseries(0.9, remaining_reads)*(median_l/2)
+        else:
+            ref_l = get_length_kde(kde_unaligned, remaining_reads) if median_l is None else \
+                np.random.lognormal(np.log(median_l), sd_l, remaining_reads)
 
         for j in xrange(len(ref_l)):
             # check if the total length fits the criteria
@@ -1704,8 +1709,8 @@ def extract_read(dna_type, length, s=None):
             s, key = random.choice(longer_chroms)
             key_seq_len = seq_len[s][key]
             
-            if s == "5997":
-                print("Longer contigs from 5997: ", [x[1] for x in longer_chroms if x[0] == "5997"])
+            # if s == "5997":
+            #     print("Longer contigs from 5997: ", [x[1] for x in longer_chroms if x[0] == "5997"])
 
         
         print("Specie: {}, contig: {}, length: {}".format(s, key, key_seq_len))
@@ -2392,12 +2397,13 @@ def main():
             parser_mg.print_help(sys.stderr)
             sys.exit(1)
 
-        if (median_len and not sd_len) or (sd_len and not median_len):
-            sys.stderr.write("\nPlease provide both mean and standard deviation of read length!\n")
-            parser_mg.print_help(sys.stderr)
-            sys.exit(1)
+        # if (median_len and not sd_len) or (sd_len and not median_len):
+        #     sys.stderr.write("\nPlease provide both mean and standard deviation of read length!\n")
+        #     parser_mg.print_help(sys.stderr)
+        #     sys.exit(1)
 
-        if median_len and sd_len and chimeric:
+        # if median_len and sd_len and chimeric:
+        if median_len and chimeric:
             sys.stderr.write("\nLognormal distributed reads cannot be chimeric!\n")
             parser_g.print_help(sys.stderr)
             sys.exit(1)
@@ -2469,9 +2475,11 @@ def main():
 
             sys.stdout.write(strftime("%Y-%m-%d %H:%M:%S") + ": Simulating sample " + sample + '\n')
             sys.stdout.flush()
-            if median_len and sd_len:
+            # if median_len and sd_len:
+            if median_len:
                 sys.stdout.write(
-                    strftime("%Y-%m-%d %H:%M:%S") + ": Simulating read length from log-normal distribution\n")
+                    # strftime("%Y-%m-%d %H:%M:%S") + ": Simulating read length from log-normal distribution\n")
+                    strftime("%Y-%m-%d %H:%M:%S") + ": Simulating read length from log distribution\n")
                 sys.stdout.flush()
 
             number_aligned = number_aligned_l[s]

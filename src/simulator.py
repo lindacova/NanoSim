@@ -806,7 +806,8 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
             if median_l is None:
                 ref_lengths = get_length_kde(kde_aligned, sum(remaining_segments))
             else:
-                total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, remaining_reads)
+                total_lengths = np.random.logseries(0.9, remaining_reads)*(median_l/2)
+                # total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, remaining_reads)
                 num_current_loop = min(remaining_reads, len(remainder_lengths), len(head_vs_ht_ratio_list))
                 ref_lengths = total_lengths[:num_current_loop] - remainder_lengths[:num_current_loop]
             ref_lengths = [x for x in ref_lengths if 0 < x <= max_l]
@@ -848,7 +849,7 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
                 new_read_name = ""
                 base_quals = []
                 for seg_idx in range(len(ref_length_list)):
-                    new_seg, new_seg_name = extract_read("metagenome", ref_length_list[seg_idx], species_list[seg_idx])
+                    new_seg, new_seg_name, species_updated = extract_read("metagenome", ref_length_list[seg_idx], species_list[seg_idx])
                     new_read += new_seg
                     new_read_name += new_seg_name
                     if fastq:
@@ -926,7 +927,7 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
                 new_seg_list = [None] * num_seg
                 read_name_components = list()
                 for seg_idx in range(num_seg):
-                    new_seg_list[seg_idx], new_seg_name = extract_read("metagenome", seg_length_list[seg_idx], species_list[seg_idx])
+                    new_seg_list[seg_idx], new_seg_name, species_updated = extract_read("metagenome", seg_length_list[seg_idx], species_list[seg_idx])
                     read_name_components.append(new_seg_name)
                     if seg_idx < len(gap_list):
                         read_name_components.append("gap_" + str(len(gap_list[seg_idx])))
@@ -963,7 +964,8 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
                         base_quals.extend(gap_base_qual_list[seg_idx])
 
                     # Update base level abundance info
-                    current_species_bases[species_list[seg_idx]] += len(new_seg)
+                    # current_species_bases[species_list[seg_idx]] += len(new_seg)
+                    current_species_bases[species_updated] += len(new_seg)
 
                 if fastq:  # Get head/tail qualities and add to base_quals
                     ht_quals = mm.trunc_lognorm_rvs("ht", read_type, basecaller, head + tail).tolist()
@@ -1285,7 +1287,7 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
                 new_read_name = ""
                 base_quals = []
                 for each_ref in ref_length_list:
-                    new_seg, new_seg_name = extract_read(dna_type, each_ref)
+                    new_seg, new_seg_name, _ = extract_read(dna_type, each_ref)
                     new_read += new_seg
                     new_read_name += new_seg_name
                     if fastq:
@@ -1348,7 +1350,7 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
                 new_seg_list = [None] * num_seg
                 read_name_components = [None] * num_seg
                 for seg_idx in range(num_seg):
-                    new_seg_list[seg_idx], read_name_components[seg_idx] = extract_read(dna_type, seg_length_list[seg_idx])
+                    new_seg_list[seg_idx], read_name_components[seg_idx], _ = extract_read(dna_type, seg_length_list[seg_idx])
                 new_read_name = ';'.join(read_name_components) + "_aligned_" + str(sequence_index)
                 
                 if num_seg > 1:
@@ -1427,8 +1429,12 @@ def simulation_unaligned(dna_type, min_l, max_l, median_l, sd_l, out_reads, base
     passed = 0
     while remaining_reads > 0:
         # if the median length and sd is set, use log normal distribution for simulation
-        ref_l = get_length_kde(kde_unaligned, remaining_reads) if median_l is None else \
-            np.random.lognormal(np.log(median_l), sd_l, remaining_reads)
+        if dna_type == "metagenome":
+            ref_l = get_length_kde(kde_unaligned, remaining_reads) if median_l is None else \
+                np.random.logseries(0.9, remaining_reads)*(median_l/2)
+        else:
+            ref_l = get_length_kde(kde_unaligned, remaining_reads) if median_l is None else \
+                np.random.lognormal(np.log(median_l), sd_l, remaining_reads)
 
         for j in xrange(len(ref_l)):
             # check if the total length fits the criteria
@@ -1443,7 +1449,7 @@ def simulation_unaligned(dna_type, min_l, max_l, median_l, sd_l, out_reads, base
                 sequence_index = total_simulated.value
                 total_simulated.value += 1
 
-            new_read, new_read_name = extract_read(dna_type, middle_ref)
+            new_read, new_read_name, _ = extract_read(dna_type, middle_ref)
             new_read_name = new_read_name + "_unaligned_" + str(sequence_index)
             # Change lowercase to uppercase and replace N with any base
             new_read = case_convert(new_read)
@@ -1488,7 +1494,7 @@ def simulation_gap(ref, basecaller, read_type, dna_type, fastq):
         return '', []
 
     unaligned, middle_ref, error_dict, error_count = unaligned_error_list(ref, error_par)
-    new_gap, new_gap_name = extract_read(dna_type, middle_ref)
+    new_gap, new_gap_name, _ = extract_read(dna_type, middle_ref)
     new_gap = case_convert(new_gap)
 
     # no quals returned here since unaligned quals are not based on mis/ins/match qual distributions
@@ -1658,7 +1664,7 @@ def extract_read(dna_type, length, s=None):
                 new_read = seq_dict[key][ref_pos: ref_pos + length]
                 new_read_name = key + "_" + str(ref_pos)
                 break
-        return new_read, new_read_name
+        return new_read, new_read_name, s
     elif dna_type == "metagenome":
         if not s:
             s = random.choice(list(seq_len.keys()))  # added "list" thing to be compatible with Python v3
@@ -1677,7 +1683,9 @@ def extract_read(dna_type, length, s=None):
                     if length < tmp_dict[tmp_key]:
                         longer_chroms.append((tmp_s, tmp_key))
             
-            assert len(longer_chroms) > 0 # otherwise there is a problem
+            # assert len(longer_chroms) > 0 # otherwise there is a problem
+            if len(longer_chroms) <= 0:
+                raise ValueError("No chromosome is long enough to extract a read of length " + str(length))
             
             # select a random chromosome from this list
             s, key = random.choice(longer_chroms)
@@ -1694,8 +1702,9 @@ def extract_read(dna_type, length, s=None):
             ref_pos = random.randint(0, key_seq_len - length)
             new_read = seq_dict[s][key][ref_pos: ref_pos + length]
         new_read_name = s + '-' + key + "_" + str(ref_pos)
-            
-        return new_read, new_read_name
+        
+        ## Linda: return s and key to update the bases quota of the actually chosen species and contig
+        return new_read, new_read_name, s
     else:
         # Extract the aligned region from reference
         if dna_type == "circular":
@@ -1727,7 +1736,7 @@ def extract_read(dna_type, length, s=None):
                         ref_pos -= seq_len[key]
                 if new_read != "":
                     break
-        return new_read, new_read_name
+        return new_read, new_read_name, s
 
 
 def unaligned_error_list(m_ref, error_p):
@@ -1916,6 +1925,8 @@ def mutate_read(read, read_name, error_log, e_dict, e_count, basecaller, read_ty
             new_bases = ""
             for i in xrange(val[1]):
                 tmp_bases = list(BASES)
+                if read[key + i] not in tmp_bases:
+                    print("REMOVING: " + read[key + i])
                 tmp_bases.remove(read[key + i])
                 # tmp_bases.remove(read[key]) ## Edited this part for testing
                 new_base = random.choice(tmp_bases)
@@ -2365,12 +2376,13 @@ def main():
             parser_mg.print_help(sys.stderr)
             sys.exit(1)
 
-        if (median_len and not sd_len) or (sd_len and not median_len):
-            sys.stderr.write("\nPlease provide both mean and standard deviation of read length!\n")
-            parser_mg.print_help(sys.stderr)
-            sys.exit(1)
+        # if (median_len and not sd_len) or (sd_len and not median_len):
+        #     sys.stderr.write("\nPlease provide both mean and standard deviation of read length!\n")
+        #     parser_mg.print_help(sys.stderr)
+        #     sys.exit(1)
 
-        if median_len and sd_len and chimeric:
+        # if median_len and sd_len and chimeric:
+        if median_len and chimeric:
             sys.stderr.write("\nLognormal distributed reads cannot be chimeric!\n")
             parser_g.print_help(sys.stderr)
             sys.exit(1)
@@ -2442,9 +2454,11 @@ def main():
 
             sys.stdout.write(strftime("%Y-%m-%d %H:%M:%S") + ": Simulating sample " + sample + '\n')
             sys.stdout.flush()
-            if median_len and sd_len:
+            # if median_len and sd_len:
+            if median_len:
                 sys.stdout.write(
-                    strftime("%Y-%m-%d %H:%M:%S") + ": Simulating read length from log-normal distribution\n")
+                    # strftime("%Y-%m-%d %H:%M:%S") + ": Simulating read length from log-normal distribution\n")
+                    strftime("%Y-%m-%d %H:%M:%S") + ": Simulating read length from log distribution\n")
                 sys.stdout.flush()
 
             number_aligned = number_aligned_l[s]
